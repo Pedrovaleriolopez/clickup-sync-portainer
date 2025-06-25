@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    image: clickup-sync:latest
+    networks:
+      - network_public
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - CLICKUP_API_KEY=${CLICKUP_API_KEY}
+    deploy:
+      replicas: 1
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network=network_public
+        - traefik.http.services.clickup.loadbalancer.server.port=3000
+        - traefik.http.routers.clickup.rule=Host(`clickup-sync.allfluence.ai`)
+        - traefik.http.routers.clickup.entrypoints=websecure
+        - traefik.http.routers.clickup.tls=true
+        - traefik.http.routers.clickup.tls.certresolver=letsencryptresolver
+        - traefik.http.routers.clickup.service=clickup
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+
+networks:
+  network_public:
+    external: true
