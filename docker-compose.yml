@@ -11,6 +11,7 @@ services:
       - SUPABASE_URL=${SUPABASE_URL}
       - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
       - CLICKUP_API_KEY=${CLICKUP_API_KEY}
+      - CLICKUP_TEAM_ID=${CLICKUP_TEAM_ID}
     deploy:
       replicas: 1
       labels:
@@ -36,99 +37,99 @@ services:
         fi &&
         echo 'Creating server file...' &&
         cat > server.js << 'EOF'
-      const express = require('express');
-      const { createClient } = require('@supabase/supabase-js');
-      require('dotenv').config();
+const express = require('express');
+const { createClient } = require('@supabase/supabase-js');
+require('dotenv').config();
 
-      const app = express();
-      app.use(express.json());
+const app = express();
+app.use(express.json());
 
-      // Initialize Supabase
-      const supabase = process.env.SUPABASE_URL ? 
-        createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY || '') : null;
+// Initialize Supabase
+const supabase = process.env.SUPABASE_URL ? 
+  createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY || '') : null;
 
-      // Health check
-      app.get('/health', (req, res) => {
-        res.json({ 
-          status: 'ok', 
-          timestamp: new Date().toISOString(),
-          supabase: !!process.env.SUPABASE_URL
+// Health check
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'ok', 
+    timestamp: new Date().toISOString(),
+    supabase: !!process.env.SUPABASE_URL
+  });
+});
+
+// Home page
+app.get('/', (req, res) => {
+  res.send(\`
+    <h1>ClickUp Sync v1.0</h1>
+    <p>Status: Running</p>
+    <p>Endpoints:</p>
+    <ul>
+      <li>GET /health - Health check</li>
+      <li>POST /webhook - ClickUp webhook receiver</li>
+      <li>GET /logs - View recent webhook events</li>
+    </ul>
+  \`);
+});
+
+// Webhook receiver
+app.post('/webhook', async (req, res) => {
+  const event = req.headers['x-clickup-event'];
+  const body = req.body;
+  
+  console.log(\`Webhook received: \${event}\`, body);
+  
+  // Save to Supabase if configured
+  if (supabase && process.env.SUPABASE_URL) {
+    try {
+      const { data, error } = await supabase
+        .from('webhook_events')
+        .insert({
+          event_type: event,
+          payload: body,
+          processed: false
         });
-      });
+      
+      if (error) {
+        console.error('Supabase error:', error);
+      } else {
+        console.log('Event saved to Supabase');
+      }
+    } catch (err) {
+      console.error('Error saving to Supabase:', err);
+    }
+  }
+  
+  res.json({ received: true });
+});
 
-      // Home page
-      app.get('/', (req, res) => {
-        res.send(\`
-          <h1>ClickUp Sync v1.0</h1>
-          <p>Status: Running</p>
-          <p>Endpoints:</p>
-          <ul>
-            <li>GET /health - Health check</li>
-            <li>POST /webhook - ClickUp webhook receiver</li>
-            <li>GET /logs - View recent webhook events</li>
-          </ul>
-        \`);
-      });
+// View logs
+app.get('/logs', async (req, res) => {
+  if (!supabase || !process.env.SUPABASE_URL) {
+    return res.json({ message: 'Supabase not configured' });
+  }
+  
+  try {
+    const { data, error } = await supabase
+      .from('webhook_events')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(20);
+    
+    if (error) {
+      return res.status(500).json({ error: error.message });
+    }
+    
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
-      // Webhook receiver
-      app.post('/webhook', async (req, res) => {
-        const event = req.headers['x-clickup-event'];
-        const body = req.body;
-        
-        console.log(\`Webhook received: \${event}\`, body);
-        
-        // Save to Supabase if configured
-        if (supabase && process.env.SUPABASE_URL) {
-          try {
-            const { data, error } = await supabase
-              .from('webhook_events')
-              .insert({
-                event_type: event,
-                payload: body,
-                processed: false
-              });
-            
-            if (error) {
-              console.error('Supabase error:', error);
-            } else {
-              console.log('Event saved to Supabase');
-            }
-          } catch (err) {
-            console.error('Error saving to Supabase:', err);
-          }
-        }
-        
-        res.json({ received: true });
-      });
-
-      // View logs
-      app.get('/logs', async (req, res) => {
-        if (!supabase || !process.env.SUPABASE_URL) {
-          return res.json({ message: 'Supabase not configured' });
-        }
-        
-        try {
-          const { data, error } = await supabase
-            .from('webhook_events')
-            .select('*')
-            .order('created_at', { ascending: false })
-            .limit(20);
-          
-          if (error) {
-            return res.status(500).json({ error: error.message });
-          }
-          
-          res.json(data);
-        } catch (err) {
-          res.status(500).json({ error: err.message });
-        }
-      });
-
-      const PORT = process.env.PORT || 3000;
-      app.listen(PORT, () => {
-        console.log(\`Server running on port \${PORT}\`);
-      });
-      EOF
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(\`Server running on port \${PORT}\`);
+});
+EOF
         echo 'Starting server...' &&
         node server.js
       "
