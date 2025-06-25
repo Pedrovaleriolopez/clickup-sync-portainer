@@ -29,6 +29,7 @@
    SUPABASE_URL=https://seu-projeto.supabase.co
    SUPABASE_ANON_KEY=sua-chave-anon
    CLICKUP_API_KEY=sua-api-key
+   CLICKUP_TEAM_ID=seu-team-id
    ```
 
 3. **Clique em "Deploy the stack"**
@@ -113,10 +114,26 @@ curl -X POST https://clickup-sync.allfluence.ai/webhook \
 ## 📦 Estrutura
 
 ```
-├── docker-compose.yml   # Stack definition
-├── Dockerfile          # Build da imagem
-├── package.json        # Dependências Node
-├── src/
-│   └── server.js      # Servidor Express
-└── README.md          # Este arquivo
+├── docker-compose.yml   # Stack definition (inline server)
+├── README.md           # Este arquivo
+└── versions/           # Versões anteriores
+    ├── docker-compose.v1-basic.yml
+    ├── docker-compose.v2-with-webhook.yml
+    └── docker-compose.v3-inline.yml
 ```
+
+## 🔧 Notas Técnicas
+
+### Correção: npm init em containers reiniciados (25/06/2024)
+- **Problema**: Erro "Tracker idealTree already exists" ao reiniciar containers
+- **Causa**: `npm init -y` tentava recriar package.json existente
+- **Solução**: 
+  - Adicionado `working_dir: /app` no compose
+  - Verificação condicional antes de `npm init`
+  - Mantém dependências entre reinicializações
+
+### Inline Server
+- Todo o código do servidor está embutido no docker-compose.yml
+- Não requer arquivos externos (server.js, package.json)
+- Simplifica deploy e manutenção
+- Ideal para projetos simples e POCs
