@@ -24,9 +24,16 @@ services:
         - traefik.http.routers.clickup.service=clickup
     command: >
       sh -c "
-        echo 'Installing dependencies...' &&
-        npm init -y &&
-        npm install express @supabase/supabase-js dotenv &&
+        cd /app &&
+        echo 'Setting up app directory...' &&
+        if [ ! -f package.json ]; then
+          echo 'Initializing new project...' &&
+          npm init -y &&
+          npm install express @supabase/supabase-js dotenv
+        else
+          echo 'Project already initialized, checking dependencies...' &&
+          npm install
+        fi &&
         echo 'Creating server file...' &&
         cat > server.js << 'EOF'
       const express = require('express');
@@ -125,6 +132,7 @@ services:
         echo 'Starting server...' &&
         node server.js
       "
+    working_dir: /app
 
 networks:
   network_public:
